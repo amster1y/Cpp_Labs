@@ -1,2 +1,2 @@
-# C-_Labs
+# C++_Labs
 C++ labs for NSU
