@@ -177,10 +177,7 @@ bool Matrix::operator==(const Matrix& other) const
 
 bool Matrix::operator!=(const Matrix& other) const
 {
-    if (*this==other)
-        return false;
-    else
-        return true;
+    return (*this==other)? false : true;
 }
 
 std::istream & operator>>(std::istream &type, Matrix &m)
