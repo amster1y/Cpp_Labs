@@ -177,13 +177,10 @@ bool Matrix::operator==(const Matrix& other) const
 
 bool Matrix::operator!=(const Matrix& other) const
 {
-    if (size!=other.size)
+    if (*this==other)
+        return false;
+    else
         return true;
-    for (int i = 0; i < size; i++)
-        for (int j = 0; j < size; j++)
-            if (mtrx[i][j] == other.mtrx[i][j])
-                return false;
-    return true;
 }
 
 std::istream & operator>>(std::istream &type, Matrix &m)
