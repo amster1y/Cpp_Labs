@@ -32,16 +32,20 @@ class Matrix
     int **mtrx;
     friend class Column;
     friend class Raw;
+    void allocation(unsigned s)
+    {
+        size = s;
+        mtrx = new int* [size];
+        for (int i = 0; i < size; i++)
+            mtrx[i] = new int [size];
+    }
 public:
     Matrix(): size(0), mtrx(nullptr)
     {}
 
     Matrix(unsigned s)
     {
-        size = s;
-        mtrx = new int* [size];
-        for (int i = 0; i < size; i++)
-            mtrx[i] = new int [size];
+        allocation(s);
         for (int i = 0; i < size; i++)
             for (int j = 0; j < size; j++)
                 mtrx[i][j] = (i == j);   
@@ -49,10 +53,7 @@ public:
 
     Matrix(unsigned s, int* array)
     {
-        size = s;
-        mtrx = new int* [size];
-        for (int i = 0; i < size; i++)
-            mtrx[i] = new int [size];
+        allocation(s);
         for (int i = 0; i < size; i++)
             for (int j = 0; j < size; j++)
                 if (i == j)
@@ -62,12 +63,11 @@ public:
                 
     }
 
-    Matrix(unsigned s, std::istream &type)
+    Matrix(std::istream &type)
     {
-        size = s;
-        mtrx = new int* [size];
-        for (int i = 0; i < size; i++)
-            mtrx[i] = new int [size];
+        unsigned s;
+        type >> s;
+        allocation(s);
         for (int i = 0; i < size; i++)
             for (int j = 0; j < size; j++)
                 type >> mtrx[i][j];
@@ -85,10 +85,7 @@ public:
         if (this != &orig)
         {
             this->~Matrix();
-            size = orig.size;
-            mtrx = new int* [size];
-            for (int i = 0; i < size; i++)
-                mtrx[i] = new int [size];
+            allocation(orig.size);
             for (int i = 0; i < size; i++)
                 for (int j = 0; j < size; j++)
                     mtrx[i][j] = orig.mtrx[i][j];
