@@ -7,6 +7,7 @@ class Expression
 {;
 public:
     friend Expression* read(string str);
+    friend Expression* read_without_brackets(string str);
     virtual ostream & print(ostream &type) const = 0;
     virtual Expression* derivative(string v) const = 0;
     virtual int eval(string str) const = 0;
@@ -255,7 +256,29 @@ Div::~Div()
 {
     delete left;
     delete right;
-} 
+}
+
+Expression* read_without_brackets(string str)
+{
+    int pos = str.length() - 1;
+    while (pos != 0)
+    {
+        if (str[pos] == '+')
+            return new Add(read(str.substr(0, pos-1)), read(str.substr(pos+1, str.length())));
+        if (str[pos] == '-')
+            return new Sub(read(str.substr(0, pos-1)), read(str.substr(pos+1, str.length())));
+        pos--;
+    }
+    pos = str.length() - 1;
+    while (pos != 0)
+    {
+        if (str[pos] == '*')
+            return new Mul(read(str.substr(0, pos-1)), read(str.substr(pos+1, str.length())));
+        if (str[pos] == '/')
+            return new Div(read(str.substr(0, pos-1)), read(str.substr(pos+1, str.length())));
+        pos--;
+    }
+}
 
 Expression* read(string str)
 {
@@ -266,7 +289,10 @@ Expression* read(string str)
         if (str[0] >= '0' && str[0] <= '9')
             return new Number(atoi(str.c_str()));
         else
-            return new Variable(str);
+            if (str.find('+') == string::npos && str.find('-') == string::npos && str.find('*') == string::npos && str.find('/') == string::npos)
+                return new Variable(str);
+            else
+                return read_without_brackets(str);
     }
     str = str.substr(1, str.length() - 2);
     while (pos <= str.length())
@@ -299,6 +325,5 @@ int main()
     Expression* e = read(str);
     Expression* de = e->derivative("x");
     de->print(cout);
-    std::cout << res;
     return 0;
 }
