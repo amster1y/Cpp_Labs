@@ -405,6 +405,8 @@ Expression* simplify(Expression* ex)
         Number* r = dynamic_cast<Number*>(sub_exp->right);
         if (l != nullptr && r != nullptr)
             return new Number(ex->eval(""));
+        if (sub_exp->left == sub_exp->right)
+            return new Number(0);
     }
     Mul* mul_exp = dynamic_cast<Mul*>(ex);
     if (mul_exp != nullptr)
@@ -448,9 +450,7 @@ int main()
     string str;
     std::cin >> str;
     Expression* e = read(str);
-    Expression* de = simplify(e);
-
-    //Expression* de = e->derivative("x");
+    Expression* de = e->derivative("x");
     de->print(cout);
     return 0;
 }
