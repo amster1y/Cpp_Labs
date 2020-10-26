@@ -8,6 +8,7 @@ class Expression
 public:
     friend Expression* read(string str);
     friend Expression* simplify(Expression* ex);
+    virtual Expression* copy() = 0;
     virtual ostream & print(ostream &type) const = 0;
     virtual Expression* derivative(string v) const = 0;
     virtual int eval(string str) const = 0;
@@ -24,6 +25,11 @@ public:
     friend Expression* simplify(Expression* ex);
     Number(int num): num(num) 
     {}
+
+    Expression* copy()
+    {
+        return new Number(num);
+    }
 
     ostream & print(ostream &type) const
     {
@@ -62,6 +68,11 @@ public:
     friend Expression* simplify(Expression* ex);
     Variable(string var): var(var)
     {}
+
+    Expression* copy()
+    {
+        return new Variable(var);
+    }
 
     ostream & print(ostream &type) const
     {
@@ -102,91 +113,116 @@ public:
     {}
 };
 
-class Add: public Expression
+class Expression_of_2: public Expression
 {
 protected:
     Expression* left;
     Expression* right;
+    Expression_of_2(Expression* left, Expression* right): left(left), right(right)
+    {}
+public:
+    ~Expression_of_2()
+    {
+        delete left;
+        delete right;
+    }
+
+    bool operator==(Expression* other) const
+    {
+        if (typeid(other) != typeid(this))
+            return false;
+        Expression_of_2* m = dynamic_cast<Expression_of_2*>(other);
+        return (*(m->left) == left && *(m->right) == right);
+    }
+};
+
+class Add: public Expression_of_2
+{
+    friend Expression* read(string str);
+    Add(Expression* left, Expression* right): Expression_of_2(left, right)
+    {}
+protected:
+    friend class Number;
+    friend class Variable;
     friend class Sub;
     friend class Mul;
     friend class Div;
 public:
+    Expression* copy()
+    {
+        return new Add(left->copy(), right->copy());
+    }
     friend Expression* simplify(Expression* ex);
-    Add(Expression* left, Expression* right): left(left), right(right)
-    {}
-
-    bool operator==(Expression* other) const;
     ostream & print(ostream &type) const;
     int eval(string str) const;
     Expression* derivative(string v) const;
-    ~Add();
 };
 
-class Sub: public Expression
+class Sub: public Expression_of_2
 {
+    friend Expression* read(string str);
+    Sub(Expression* left, Expression* right): Expression_of_2(left, right)
+    {}
 protected:
-    Expression *left;
-    Expression *right;
+    friend class Number;
+    friend class Variable;
     friend class Add;
     friend class Mul;
     friend class Div;
 public:
+Expression* copy()
+    {
+        return new Sub(left->copy(), right->copy());
+    }
     friend Expression* simplify(Expression* ex);
-    Sub(Expression *left, Expression *right): left(left), right(right)
-    {}
-
-    bool operator==(Expression* other) const;
     ostream & print(ostream &type) const;
     int eval(string str) const;
     Expression* derivative(string v) const;
-    ~Sub();
 };
 
-class Mul: public Expression
+class Mul: public Expression_of_2
 {
+    friend Expression* read(string str);
+    Mul(Expression* left, Expression* right): Expression_of_2(left, right)
+    {}
 protected:
-    Expression *left;
-    Expression *right;
+    friend class Number;
+    friend class Variable;
     friend class Add;
     friend class Sub;
     friend class Div;
 public:
+    Expression* copy()
+    {
+        return new Mul(left->copy(), right->copy());
+    }
     friend Expression* simplify(Expression* ex);
-    Mul(Expression *left, Expression *right): left(left), right(right)
-    {}
-
-    bool operator==(Expression* other) const;
     ostream & print(ostream &type) const;
     int eval(string str) const;
     Expression* derivative(string v) const;
-    ~Mul();
 };
 
-class Div: public Expression
+class Div: public Expression_of_2
 {
+    friend Expression* read(string str);
+    Div(Expression* left, Expression* right): Expression_of_2(left, right)
+    {}
 protected:
-    friend Expression* simplify(Expression* ex);
-    Expression *left;
-    Expression *right;
+    friend class Number;
+    friend class Variable;
     friend class Add;
     friend class Sub;
     friend class Mul;
 public:
-    Div(Expression *left, Expression *right): left(left), right(right)
-    {}
-
-    bool operator==(Expression* other) const;
+    Expression* copy()
+    {
+        return new Div(left->copy(), right->copy());
+    }
+    friend Expression* simplify(Expression* ex);
     ostream & print(ostream &type) const;
     int eval(string str) const;
     Expression* derivative(string v) const;
-    ~Div();
 };
-
-Add::~Add()
-{
-    delete left;
-    delete right;
-} 
 
 ostream & Add::print(ostream &type) const
 {
@@ -198,15 +234,6 @@ ostream & Add::print(ostream &type) const
     return type;
 }
 
-bool Add::operator==(Expression* other) const
-{
-    Add* a = dynamic_cast<Add*>(other);
-    if (a == nullptr)
-        return false;
-    else
-        return (a->left == left && a->right == right);
-}
-
 int Add::eval(string str) const
 {
     return left->eval(str) + right->eval(str);
@@ -214,7 +241,7 @@ int Add::eval(string str) const
 
 Expression* Add::derivative(string v) const
 {
-    return new Add(left->derivative(v), right->derivative(v));
+    return new Add(left->copy()->derivative(v), right->copy()->derivative(v));
 }
 
 ostream & Sub::print(ostream &type) const
@@ -227,15 +254,6 @@ ostream & Sub::print(ostream &type) const
     return type;
 }
 
-bool Sub::operator==(Expression* other) const
-{
-    Sub* s = dynamic_cast<Sub*>(other);
-    if (s == nullptr)
-        return false;
-    else
-        return (s->left == left && s->right == right);
-}
-
 int Sub::eval(string str) const
 {
     return left->eval(str) - right->eval(str);
@@ -243,14 +261,8 @@ int Sub::eval(string str) const
 
 Expression* Sub::derivative(string v) const
 {
-    return new Sub(left->derivative(v), right->derivative(v));
+    return new Sub(left->copy()->derivative(v), right->copy()->derivative(v));
 }
-
-Sub::~Sub()
-{
-    delete left;
-    delete right;
-} 
 
 ostream & Mul::print(ostream &type) const
 {
@@ -262,15 +274,6 @@ ostream & Mul::print(ostream &type) const
     return type;
 }
 
-bool Mul::operator==(Expression* other) const
-{
-    Mul* m = dynamic_cast<Mul*>(other);
-    if (m == nullptr)
-        return false;
-    else
-        return (m->left == left && m->right == right);
-}
-
 int Mul::eval(string str) const
 {
     return left->eval(str) * right->eval(str);
@@ -278,14 +281,8 @@ int Mul::eval(string str) const
 
 Expression* Mul::derivative(string v) const
 {
-    return new Add(new Mul(left->derivative(v), right), new Mul(left, right->derivative(v)));
+    return new Add(new Mul(left->copy()->derivative(v), right->copy()), new Mul(left->copy(), right->copy()->derivative(v)));
 }
-
-Mul::~Mul()
-{
-    delete left;
-    delete right;
-} 
 
 ostream & Div::print(ostream &type) const
 {
@@ -297,15 +294,6 @@ ostream & Div::print(ostream &type) const
     return type;
 }
 
-bool Div::operator==(Expression* other) const
-{
-    Div* d = dynamic_cast<Div*>(other);
-    if (d == nullptr)
-        return false;
-    else
-        return (d->left == left && d->right == right);
-}
-
 int Div::eval(string str) const
 {
     return left->eval(str) / right->eval(str);
@@ -313,14 +301,8 @@ int Div::eval(string str) const
 
 Expression* Div::derivative(string v) const
 {
-    return new Div(new Sub(new Mul(left->derivative(v), right), new Mul(left, right->derivative(v))), 
+    return new Div(new Sub(new Mul(left->copy()->derivative(v), right->copy()), new Mul(left->copy(), right->copy()->derivative(v))), 
     new Mul(right, right));
-}
-
-Div::~Div()
-{
-    delete left;
-    delete right;
 }
 
 Expression* read(string str)
@@ -452,5 +434,7 @@ int main()
     Expression* e = read(str);
     Expression* de = e->derivative("x");
     de->print(cout);
+    delete e;
+    delete de;
     return 0;
 }
