@@ -118,7 +118,7 @@ class HashMap
             items[i].free = other.items[i].free;
             items[i].alive = other.items[i].alive;
         }
-        //delete & other;
+        delete & other;
     }
 public:
     HashMap(): size(1), fullness(0.75), count(0), all_count(0)
@@ -246,6 +246,7 @@ void make_hash()
         }
     }
     std::cout << hash.get_count() << ' ' << hash.get_unique_count();
+    delete & hash;
 }
 
 int main()
