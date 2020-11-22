@@ -27,7 +27,6 @@ class Pair
 template <typename K, typename V>
 class HashMap
 {
-protected:
     size_t size;
     Pair<K, V>* items = nullptr;
     float fullness;
@@ -36,15 +35,17 @@ protected:
 
     class Iterator
     {
-        Pair<K, V>* pointer; 
+        Pair<K, V>* pointer;
+        Pair<K, V>* end_pointer; 
         friend class HashMap;
-        Iterator(Pair<K, V>* pointer): pointer(pointer)
+        Iterator(Pair<K, V>* pointer, Pair<K, V>* end_pointer): pointer(pointer), end_pointer(end_pointer)
         {}
         Iterator& operator=(const Iterator& orig)
         {
             if (this != &orig)
             {
                 pointer = orig.pointer;
+                end_pointer = orig.end_pointer;
 
             }
             return *this;
@@ -62,7 +63,10 @@ protected:
 
         void operator++(int n)
         {
-            pointer++;
+            if (pointer != end_pointer)
+                pointer++;
+            else
+                pointer = nullptr;
         }
     };
 
@@ -71,16 +75,13 @@ protected:
         size_t place = 0;
         while (items[place].free && !items[place].alive)
             place++;
-        Iterator iter(&items[place]);
+        Iterator iter(&items[place], &items[size - 1]);
         return iter;
     }
 
     Iterator end()
     {
-        size_t place = size - 1;
-        while(items[place].free)
-            place--;
-        Iterator iter(&items[place]);
+        Iterator iter(nullptr, nullptr);
         return iter;
     }
 
@@ -125,24 +126,28 @@ public:
         items = new Pair<K, V> [size];
     }
 
-    V search(K given_key) const
+    Iterator search(K given_key) const
     {
         size_t place = index(given_key, size);
         while (items[place].key != given_key)
         {
             if (items[place].free)
-                throw "В таблице нет элемента с необходимым ключом";
+            {
+                Iterator iter(nullptr, nullptr);
+                return iter;
+            }
             place = (place == size - 1)? 0 : place + 1;
         }
-        return items[place].value;
+        Iterator iter(&items[place], &items[size - 1]);
+        return iter;
     }
 
-    virtual void add(K given_key, V given_value)
+    void add(K given_key, V given_value)
     {
         size_t place = index(given_key, size);
         all_count++;
         count++;
-        while(items[place].free != true)
+        while(!items[place].free)
         {
             if (items[place].key == given_key)
             {
@@ -166,7 +171,7 @@ public:
             extension();
     }
 
-    virtual void remove(K given_key)
+    void remove(K given_key)
     {
         size_t place = index(given_key, size);
         while (items[place].key != given_key)
@@ -186,7 +191,7 @@ public:
         return count;
     }
 
-    int get_unique() const
+    int get_unique() 
     {
         std::set<V> unique_hash;
         Iterator iter = begin();
@@ -207,54 +212,5 @@ public:
         delete [] items;
     }
 };
-
-template <typename K, typename V>
-void make_hash()
-{
-    K key;
-    V value;
-    char sym;
-    int n;
-    std::cin >> n;
-    HashMap<K, V> hash;
-    for (int i = 0; i < n; i++)
-    {
-        std::cin >> sym;
-        if (sym == 'A')
-        {
-            std::cin >> key >> value;
-            try
-            {
-                hash.add(key, value);
-            }
-            catch (const char* msg)
-            {}
-        }
-        else
-        {
-            std::cin >> key;
-            try
-            {
-                hash.remove(key);
-            }
-            catch (const char* msg)
-            {}
-        }
-    }
-    std::cout << hash.get_count() << ' ' << hash.get_unique();
-}
-
-template <typename K>
-void prepare_hash()
-{
-    char v_type;
-    std::cin >> v_type;
-    if (v_type == 'I')
-        make_hash<K, int>();
-    if (v_type == 'D')
-        make_hash<K, double>();
-    if (v_type == 'S')
-        make_hash<K, std::string>();
-}
 
 #endif
