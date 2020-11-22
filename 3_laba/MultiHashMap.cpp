@@ -48,7 +48,68 @@ public:
     {}
 };
 
+template <typename K, typename V>
+void make_hash()
+{
+    K key;
+    V value;
+    char sym;
+    int n;
+    std::cin >> n;
+    MultiHashMap<K, V> hash;
+    for (int i = 0; i < n; i++)
+    {
+        std::cin >> sym;
+        if (sym == 'A')
+        {
+            std::cin >> key >> value;
+            try
+            {
+                hash.add(key, value);
+            }
+            catch (const char* msg)
+            {}
+        }
+        else
+        {
+            std::cin >> key;
+            try
+            {
+                hash.remove(key);
+            }
+            catch (const char* msg)
+            {}
+        }
+    }
+    std::cout << hash.get_count() << ' ' << hash.get_unique();
+}
+
+template <typename K>
+void prepare_hash()
+{
+    char v_type;
+    std::cin >> v_type;
+    if (v_type == 'I')
+        make_hash<K, int>();
+    if (v_type == 'D')
+        make_hash<K, double>();
+    if (v_type == 'S')
+        make_hash<K, std::string>();
+    if (v_type == 'M')
+        make_hash<K, Matrix>();
+}
+
 int main()
 {
+    char k_type;
+    std::cin >> k_type;
+    if (k_type == 'I')
+        prepare_hash<int>();
+    if (k_type == 'D')
+        prepare_hash<double>();
+    if (k_type == 'S')
+        prepare_hash<std::string>();
+    if (k_type == 'M')
+        prepare_hash<Matrix>(); 
     return 0;
 }
