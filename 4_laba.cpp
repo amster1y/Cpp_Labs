@@ -5,6 +5,7 @@
 #include <utility>
 #include <list>
 #include <cctype>
+#include <vector>
 
 class Expression
 {
@@ -20,8 +21,9 @@ class Env
     friend class Var;
     friend class Let;
     friend class Call;
+    friend class Set;
 public:
-    Expression* fromEnv(std::string str)
+    Expression* fromEnv(std::string& str)
     {
         try 
         {
@@ -65,7 +67,7 @@ class Var: public Expression
     std::string id;
     Env* data;
 public:
-    Var(std::string id, Env* data): id(id), data(data)
+    Var(std::string& id, Env* data): id(id), data(data)
     {
         data->env[id] = this;
     }
@@ -158,7 +160,7 @@ class Let: public Expression
     Expression* e_body;
     Env* data;
 public:
-    Let(std::string id, Expression* e_value, Expression* e_body, Env* data): id(id), e_value(e_value), e_body(e_body), data(data)
+    Let(std::string& id, Expression* e_value, Expression* e_body, Env* data): id(id), e_value(e_value), e_body(e_body), data(data)
     {}
 
     Expression* eval()
@@ -188,7 +190,7 @@ class Function: public Expression
     Expression* expr;
     friend class Call;
 public:
-    Function(std::string id, Expression* expr): id(id), expr(expr)
+    Function(std::string& id, Expression* expr): id(id), expr(expr)
     {}
 
     Expression* eval()
@@ -235,6 +237,118 @@ public:
     {
         delete f_expr;
         delete arg_expr;
+    }
+};
+
+class Set: public Expression
+{
+    std::string id;
+    Expression* e_val;
+    Env* data;
+public:
+    Set(std::string id, Expression* e_val, Env* data): id(id), e_val(e_val), data(data)
+    {}
+
+    Expression* eval()
+    {
+        data->env[id] = e_val;
+        return this;
+    }
+
+    ~Set()
+    {
+        delete e_val;
+    }
+};
+
+class Block: public Expression
+{
+    std::vector<Expression*> expr_list;
+public:
+    Block(std::vector<Expression*>& expr_list): expr_list(expr_list)
+    {}
+
+    Expression* eval()
+    {
+        for (size_t i = 0; i < expr_list.size(); i++)
+            expr_list[i] = expr_list[i]->eval();
+        return expr_list[expr_list.size() - 1];
+    }
+};
+
+class Arr: public Expression
+{
+    std::list<Expression*> expr_list;
+    friend class At;
+public:
+    Arr(std::list<Expression*>& expr_list): expr_list(expr_list)
+    {}
+
+    Expression* eval()
+    {
+        for (auto i = expr_list.begin(); i != expr_list.end(); i++)
+        {
+            *i = (*i)->eval();
+        }
+        return this;
+    }
+};
+
+class Gen: public Expression
+{
+    Expression* e_length;
+    Expression* e_function;
+    Env* data;
+public:
+    Gen(Expression* e_length, Expression* e_function, Env* data): e_length(e_length), e_function(e_function), data(data)
+    {}
+
+    Expression* eval()
+    {
+        int size = getValue(e_length->eval());
+        std::list<Expression*> result;
+        for (int i = 0; i < size; i++)
+            result.push_back((new Call(e_function, new Val(i+1), data))->eval());
+        return new Arr(result);
+    }
+
+    ~Gen()
+    {
+        delete e_length;
+        delete e_function;
+    }
+};
+
+class At: public Expression
+{
+    Expression* e_array;
+    Expression* e_index;
+public:
+    At(Expression* e_array, Expression* e_index): e_array(e_array), e_index(e_index)
+    {}
+
+    Expression* eval()
+    {
+        int index = getValue(e_index->eval());
+        Arr* array = dynamic_cast<Arr*>(e_array);
+        if (array == nullptr)
+            throw "e_array не является массивом";
+        auto pos = array->expr_list.begin();
+        int int_pos = 0;
+        while (pos != array->expr_list.end())
+        {
+            if (int_pos == index)
+                return *pos;
+            pos++;
+            int_pos++;
+        }
+        throw "Выход за границы массива";
+    }
+
+    ~At()
+    {
+        delete e_array;
+        delete e_index;
     }
 };
 
@@ -368,6 +482,8 @@ int main()
         Expression* expr = get_expr(pos, &data);
         Expression* evaled_expr = expr->eval();
         std::cout << "(val " << getValue(evaled_expr) << ")";
+        delete expr;
+        delete evaled_expr;
     }
     catch (const char* msg)
     {
