@@ -23,6 +23,18 @@ class Env
     friend class Call;
     friend class Set;
 public:
+    Env(std::unordered_map<std::string, Expression*> env): env(env)
+    {}
+
+    Env& operator=(const Env& other)
+    {
+        if (this != &other)
+        {
+            env = other.env;
+        }
+        return *this;
+    }
+
     Expression* fromEnv(std::string& str)
     {
         try 
@@ -31,7 +43,7 @@ public:
         }
         catch (...)
         {
-            throw "В env нет <expression>, соответствующего этому <id>";
+            throw std::runtime_error("В env нет <expression>, соответствующего этому <id>");
         }
     }
 };
@@ -59,7 +71,7 @@ int getValue(Expression* expr)
     if (value != nullptr)
         return value->val;
     else
-        throw "Подаваемое на вход выражение не соответстует типу <val>";
+        throw std::invalid_argument("Подаваемое на вход выражение не соответстует типу <val>");
 }
 
 class Var: public Expression
@@ -74,14 +86,7 @@ public:
 
     Expression* eval()
     {
-        try
-        {
-            return data->fromEnv(id);
-        }
-        catch(const char* msg)
-        {
-            throw msg;
-        }
+        return data->fromEnv(id);
     }
 
     ~Var()
@@ -100,15 +105,7 @@ public:
 
     Expression* eval()
     {
-        try
-        {
-            return new Val(getValue(e1->eval()) + getValue(e2->eval()));
-        }
-        catch(const char* msg)
-        {
-            throw msg;
-        }
-        
+        return new Val(getValue(e1->eval()) + getValue(e2->eval()));
     }
 
     ~Add()
@@ -130,17 +127,10 @@ public:
 
     Expression* eval()
     {
-        try
-        {
-            if (getValue(e1->eval()) > getValue(e2->eval()))
-                return e_then->eval();
-            else
-                return e_else->eval();
-        }
-        catch(const char* msg)
-        {
-            throw msg;
-        }
+        if (getValue(e1->eval()) > getValue(e2->eval()))
+            return e_then->eval();
+        else
+            return e_else->eval();
         
     }
 
@@ -158,23 +148,15 @@ class Let: public Expression
     std::string id;
     Expression* e_value;
     Expression* e_body;
-    Env* data;
+    Env data;
 public:
-    Let(std::string& id, Expression* e_value, Expression* e_body, Env* data): id(id), e_value(e_value), e_body(e_body), data(data)
+    Let(std::string& id, Expression* e_value, Expression* e_body, Env data): id(id), e_value(e_value), e_body(e_body), data(data)
     {}
 
     Expression* eval()
     {
-        try
-        {
-            data->env[id] = e_value->eval();
-            return e_body->eval();
-        }
-        catch(const char* msg)
-        {
-            throw msg;
-        }
-        
+        data.env[id] = e_value->eval();
+        return e_body->eval();
     }
 
     ~Let()
@@ -208,29 +190,25 @@ class Call: public Expression
 {
     Expression* f_expr;
     Expression* arg_expr;
-    Env* data;
+    Env data;
 public:
-    Call(Expression* f_expr, Expression* arg_expr, Env* data): f_expr(f_expr), arg_expr(arg_expr), data(data)
+    Call(Expression* f_expr, Expression* arg_expr, Env data): f_expr(f_expr), arg_expr(arg_expr), data(data)
     {}
 
     Expression* eval()
     {
-        try
+        Expression* f_evaled = f_expr->eval();
+        Function* func = dynamic_cast<Function*>(f_evaled);
+        if (func == nullptr)
+            throw std::invalid_argument("eval(f_expr) не является <function>");
+        Var* var_expr = dynamic_cast<Var*>(f_evaled);
+        if (var_expr != nullptr)
         {
-            Expression* f_evaled = f_expr->eval();
-            Function* func = dynamic_cast<Function*>(f_evaled);
-            if (func == nullptr)
-                throw "eval(f_expr) не является <function>";
-            Var* var_expr = dynamic_cast<Var*>(f_evaled);
-            if (var_expr != nullptr)
-                data->env[func->id] = func->expr;
-            data->env[func->id] = arg_expr->eval();
-            return func->expr->eval();
+            data.env[func->id] = func->expr;
+            throw std::invalid_argument("Неверный тип данных");
         }
-        catch(const char* msg)
-        {
-            throw msg;
-        }
+        data.env[func->id] = arg_expr->eval();
+        return func->expr->eval();
     }
 
     ~Call()
@@ -244,9 +222,9 @@ class Set: public Expression
 {
     std::string id;
     Expression* e_val;
-    Env* data;
+    Env *data;
 public:
-    Set(std::string id, Expression* e_val, Env* data): id(id), e_val(e_val), data(data)
+    Set(std::string id, Expression* e_val, Env *data): id(id), e_val(e_val), data(data)
     {}
 
     Expression* eval()
@@ -298,9 +276,9 @@ class Gen: public Expression
 {
     Expression* e_length;
     Expression* e_function;
-    Env* data;
+    Env data;
 public:
-    Gen(Expression* e_length, Expression* e_function, Env* data): e_length(e_length), e_function(e_function), data(data)
+    Gen(Expression* e_length, Expression* e_function, Env data): e_length(e_length), e_function(e_function), data(data)
     {}
 
     Expression* eval()
@@ -332,7 +310,7 @@ public:
         int index = getValue(e_index->eval());
         Arr* array = dynamic_cast<Arr*>(e_array);
         if (array == nullptr)
-            throw "e_array не является массивом";
+            throw std::invalid_argument("e_array не является массивом");
         auto pos = array->expr_list.begin();
         int int_pos = 0;
         while (pos != array->expr_list.end())
@@ -342,7 +320,7 @@ public:
             pos++;
             int_pos++;
         }
-        throw "Выход за границы массива";
+        throw std::runtime_error("Выход за границы массива");
     }
 
     ~At()
@@ -390,7 +368,7 @@ std::list<std::string> make_list(std::string& str)
     return result;
 }
 
-Expression* get_expr(std::list<std::string>::iterator& pos, Env* data)
+Expression* get_expr(std::list<std::string>::iterator& pos, Env data)
 {
     Expression* result;
     pos++;
@@ -405,7 +383,7 @@ Expression* get_expr(std::list<std::string>::iterator& pos, Env* data)
     if (*pos == "var")
     {
         pos++;
-        result = new Var(*pos, data);
+        result = new Var(*pos, &data);
         pos++;
         pos++;
         return result;
@@ -469,23 +447,27 @@ Expression* get_expr(std::list<std::string>::iterator& pos, Env* data)
 int main()
 {
     std::ifstream input;
+    std::ofstream output;
     std::string str;
     std::list<std::string> str_list;
-    Env data;
+    std::unordered_map<std::string, Expression*> data_map;
+    Env data(data_map);
     try
     {
         input.open("input.txt");
+        output.open("output.txt");
         str = read(input);
         input.close();
         str_list = make_list(str);
         std::list<std::string>::iterator pos = str_list.begin();
-        Expression* expr = get_expr(pos, &data);
+        Expression* expr = get_expr(pos, data);
         Expression* evaled_expr = expr->eval();
-        std::cout << "(val " << getValue(evaled_expr) << ")";
+        output << "(val " << getValue(evaled_expr) << ")";
+        output.close();
         delete expr;
         delete evaled_expr;
     }
-    catch (const char* msg)
+    catch (std::exception &exception)
     {
         std::cout << "ERROR";
     }
