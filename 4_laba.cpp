@@ -10,7 +10,7 @@
 class Expression
 {
 public:
-    virtual Expression* eval() = 0;
+    virtual Expression* eval(Env* data) = 0;
     virtual ~Expression()
     {}
 };
@@ -56,7 +56,7 @@ public:
     Val(int val): val(val)
     {}
 
-    Expression* eval()
+    Expression* eval(Env* data)
     {
         return this;
     }
@@ -77,22 +77,18 @@ int getValue(Expression* expr)
 class Var: public Expression
 {
     std::string id;
-    Env* data;
 public:
-    Var(std::string& id, Env* data): id(id), data(data)
+    Var(std::string& id): id(id)
+    {}
+
+    Expression* eval(Env* data)
     {
         data->env[id] = this;
-    }
-
-    Expression* eval()
-    {
         return data->fromEnv(id);
     }
 
     ~Var()
-    {
-        data->env.erase(id);
-    }
+    {}
 };
 
 class Add: public Expression
@@ -103,9 +99,10 @@ public:
     Add(Expression* left, Expression* right): e1(left), e2(right)
     {}
 
-    Expression* eval()
+    Expression* eval(Env* data)
     {
-        return new Val(getValue(e1->eval()) + getValue(e2->eval()));
+        Env data1 = *data;
+        return new Val(getValue(e1->eval(&data1)) + getValue(e2->eval(&data1)));
     }
 
     ~Add()
@@ -125,12 +122,13 @@ public:
     If(Expression* lc, Expression* rc, Expression* then, Expression* else_): e1(lc), e2(rc), e_then(then), e_else(else_)
     {}
 
-    Expression* eval()
+    Expression* eval(Env* data)
     {
-        if (getValue(e1->eval()) > getValue(e2->eval()))
-            return e_then->eval();
+        Env data1 = *data;
+        if (getValue(e1->eval(&data1)) > getValue(e2->eval(&data1)))
+            return e_then->eval(&data1);
         else
-            return e_else->eval();
+            return e_else->eval(&data1);
         
     }
 
@@ -148,15 +146,15 @@ class Let: public Expression
     std::string id;
     Expression* e_value;
     Expression* e_body;
-    Env data;
 public:
-    Let(std::string& id, Expression* e_value, Expression* e_body, Env data): id(id), e_value(e_value), e_body(e_body), data(data)
+    Let(std::string& id, Expression* e_value, Expression* e_body): id(id), e_value(e_value), e_body(e_body)
     {}
 
-    Expression* eval()
+    Expression* eval(Env* data)
     {
-        data.env[id] = e_value->eval();
-        return e_body->eval();
+        data->env[id] = e_value->eval(data);
+        Env data1 = *data;
+        return e_body->eval(&data1);
     }
 
     ~Let()
@@ -175,7 +173,7 @@ public:
     Function(std::string& id, Expression* expr): id(id), expr(expr)
     {}
 
-    Expression* eval()
+    Expression* eval(Env* data)
     {
         return this;
     }
@@ -190,25 +188,25 @@ class Call: public Expression
 {
     Expression* f_expr;
     Expression* arg_expr;
-    Env data;
 public:
-    Call(Expression* f_expr, Expression* arg_expr, Env data): f_expr(f_expr), arg_expr(arg_expr), data(data)
+    Call(Expression* f_expr, Expression* arg_expr): f_expr(f_expr), arg_expr(arg_expr)
     {}
 
-    Expression* eval()
+    Expression* eval(Env* data)
     {
-        Expression* f_evaled = f_expr->eval();
+        Env data1 = *data;
+        Expression* f_evaled = f_expr->eval(&data1);
         Function* func = dynamic_cast<Function*>(f_evaled);
         if (func == nullptr)
             throw std::invalid_argument("eval(f_expr) не является <function>");
         Var* var_expr = dynamic_cast<Var*>(f_evaled);
         if (var_expr != nullptr)
         {
-            data.env[func->id] = func->expr;
+            data->env[func->id] = func->expr;
             throw std::invalid_argument("Неверный тип данных");
         }
-        data.env[func->id] = arg_expr->eval();
-        return func->expr->eval();
+        data->env[func->id] = arg_expr->eval(&data1);
+        return func->expr->eval(&data1);
     }
 
     ~Call()
@@ -222,12 +220,11 @@ class Set: public Expression
 {
     std::string id;
     Expression* e_val;
-    Env *data;
 public:
-    Set(std::string id, Expression* e_val, Env *data): id(id), e_val(e_val), data(data)
+    Set(std::string id, Expression* e_val): id(id), e_val(e_val)
     {}
 
-    Expression* eval()
+    Expression* eval(Env* data)
     {
         data->env[id] = e_val;
         return this;
@@ -246,10 +243,11 @@ public:
     Block(std::vector<Expression*>& expr_list): expr_list(expr_list)
     {}
 
-    Expression* eval()
+    Expression* eval(Env* data)
     {
+        Env data1 = *data;
         for (size_t i = 0; i < expr_list.size(); i++)
-            expr_list[i] = expr_list[i]->eval();
+            expr_list[i] = expr_list[i]->eval(&data1);
         return expr_list[expr_list.size() - 1];
     }
 };
@@ -262,11 +260,12 @@ public:
     Arr(std::list<Expression*>& expr_list): expr_list(expr_list)
     {}
 
-    Expression* eval()
+    Expression* eval(Env *data)
     {
+        Env data1 = *data;
         for (auto i = expr_list.begin(); i != expr_list.end(); i++)
         {
-            *i = (*i)->eval();
+            *i = (*i)->eval(&data1);
         }
         return this;
     }
@@ -276,17 +275,16 @@ class Gen: public Expression
 {
     Expression* e_length;
     Expression* e_function;
-    Env data;
 public:
-    Gen(Expression* e_length, Expression* e_function, Env data): e_length(e_length), e_function(e_function), data(data)
+    Gen(Expression* e_length, Expression* e_function): e_length(e_length), e_function(e_function)
     {}
 
-    Expression* eval()
+    Expression* eval(Env* data)
     {
-        int size = getValue(e_length->eval());
+        int size = getValue(e_length->eval(data));
         std::list<Expression*> result;
         for (int i = 0; i < size; i++)
-            result.push_back((new Call(e_function, new Val(i+1), data))->eval());
+            result.push_back((new Call(e_function, new Val(i+1)))->eval(data));
         return new Arr(result);
     }
 
@@ -305,9 +303,9 @@ public:
     At(Expression* e_array, Expression* e_index): e_array(e_array), e_index(e_index)
     {}
 
-    Expression* eval()
+    Expression* eval(Env* data)
     {
-        int index = getValue(e_index->eval());
+        int index = getValue(e_index->eval(data));
         Arr* array = dynamic_cast<Arr*>(e_array);
         if (array == nullptr)
             throw std::invalid_argument("e_array не является массивом");
@@ -368,7 +366,7 @@ std::list<std::string> make_list(std::string& str)
     return result;
 }
 
-Expression* get_expr(std::list<std::string>::iterator& pos, Env data)
+Expression* get_expr(std::list<std::string>::iterator& pos)
 {
     Expression* result;
     pos++;
@@ -383,7 +381,7 @@ Expression* get_expr(std::list<std::string>::iterator& pos, Env data)
     if (*pos == "var")
     {
         pos++;
-        result = new Var(*pos, &data);
+        result = new Var(*pos);
         pos++;
         pos++;
         return result;
@@ -391,8 +389,8 @@ Expression* get_expr(std::list<std::string>::iterator& pos, Env data)
     if (*pos == "add")
     {
         pos++;
-        Expression* left = get_expr(pos, data);
-        Expression* right = get_expr(pos, data);
+        Expression* left = get_expr(pos);
+        Expression* right = get_expr(pos);
         result = new Add(left, right);
         pos++;
         return result;
@@ -400,12 +398,12 @@ Expression* get_expr(std::list<std::string>::iterator& pos, Env data)
     if (*pos == "if")
     {
         pos++;
-        Expression* e1 = get_expr(pos, data);
-        Expression* e2 = get_expr(pos, data);
+        Expression* e1 = get_expr(pos);
+        Expression* e2 = get_expr(pos);
         pos++;
-        Expression* e_then = get_expr(pos, data);
+        Expression* e_then = get_expr(pos);
         pos++;
-        Expression* e_else = get_expr(pos, data);
+        Expression* e_else = get_expr(pos);
         result = new If(e1, e2, e_then, e_else);
         pos++;
         return result;
@@ -416,10 +414,10 @@ Expression* get_expr(std::list<std::string>::iterator& pos, Env data)
         std::string id = *pos;
         pos++;
         pos++;
-        Expression* e_value = get_expr(pos, data);
+        Expression* e_value = get_expr(pos);
         pos++;
-        Expression* e_body = get_expr(pos, data);
-        result = new Let(id, e_value, e_body, data);
+        Expression* e_body = get_expr(pos);
+        result = new Let(id, e_value, e_body);
         pos++;
         return result;
     }
@@ -428,7 +426,7 @@ Expression* get_expr(std::list<std::string>::iterator& pos, Env data)
         pos++;
         std::string id = *pos;
         pos++;
-        Expression* expr = get_expr(pos, data);
+        Expression* expr = get_expr(pos);
         result = new Function(id, expr);
         pos++;
         return result;
@@ -436,9 +434,9 @@ Expression* get_expr(std::list<std::string>::iterator& pos, Env data)
     if (*pos == "call")
     {
         pos++;
-        Expression* f_expr = get_expr(pos, data);
-        Expression* arg_expr = get_expr(pos, data);
-        result = new Call(f_expr, arg_expr, data);
+        Expression* f_expr = get_expr(pos);
+        Expression* arg_expr = get_expr(pos);
+        result = new Call(f_expr, arg_expr);
         pos++;
         return result;
     }
@@ -460,8 +458,8 @@ int main()
         input.close();
         str_list = make_list(str);
         std::list<std::string>::iterator pos = str_list.begin();
-        Expression* expr = get_expr(pos, data);
-        Expression* evaled_expr = expr->eval();
+        Expression* expr = get_expr(pos);
+        Expression* evaled_expr = expr->eval(&data);
         output << "(val " << getValue(evaled_expr) << ")";
         output.close();
         delete expr;
