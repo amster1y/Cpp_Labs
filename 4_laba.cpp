@@ -71,7 +71,10 @@ int getValue(Expression* expr)
     if (value != nullptr)
         return value->val;
     else
+    {
+        delete expr;
         throw std::invalid_argument("Подаваемое на вход выражение не соответстует типу <val>");
+    }
 }
 
 class Var: public Expression
