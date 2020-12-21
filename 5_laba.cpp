@@ -21,16 +21,15 @@ void working_with_files(std::queue<std::string>& links, int& links_count, std::s
 
     while (!links.empty())
     {
-        locker.lock();
+        std::lock_guard<std::mutex> lock1(locker);
         if (links.empty())
         {
-            locker.unlock();
             break;
         }
         str = links.front();
         links.pop();
         links_count++;
-        locker.unlock();
+        lock1.~lock_guard();
         while (std::regex_search(str, matched_links, mask))
         {
             str1 = matched_links[0];
@@ -39,15 +38,14 @@ void working_with_files(std::queue<std::string>& links, int& links_count, std::s
             str1 = matched_links2.str();
             if (names_of_files.find(str1) == names_of_files.end())
             {
-                fin_locker.lock();
+                std::lock_guard<std::mutex> lock2(fin_locker);
                 input.open("test_data/" + str1);
                 while(input)
                 {
                     std::getline(input, new_link);
+                    links.push(new_link);
                 }
                 input.close();
-                fin_locker.unlock();
-                links.push(new_link);
                 names_of_files.insert(str1);
             }
         }
@@ -74,10 +72,10 @@ int main()
     while(input)
     {
         std::getline(input, str);
+        links.push(str);
     }
     input.close();
     names_of_files.insert(first_link.substr(10));
-    links.push(str);
     for (int i = 0; i < x; i++)
     {
         threads.emplace_back(working_with_files, std::ref(links), std::ref(links_count), std::ref(names_of_files));
