@@ -44,7 +44,7 @@ void working_with_files(std::queue<std::string>& links, std::set<std::string>& n
             str = matched_links.suffix().str();
             bool search = std::regex_search(str1, matched_links2, mask2);
             str1 = matched_links2.str();
-            std::unique_lock<std::mutex> lock2(fin_locker);
+            std::lock_guard<std::mutex> lock2(fin_locker);
             if (names_of_files.find(str1) == names_of_files.end())
             {
                 input.open("test_data/" + str1);
