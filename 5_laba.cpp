@@ -31,9 +31,7 @@ void working_with_files(std::queue<std::string>& links, std::set<std::string>& n
         }
         std::unique_lock<std::mutex> lock1(locker);
         if (links.empty())
-        {
             break;
-        }
         count_of_working++;
         str = links.front();
         links.pop();
@@ -88,9 +86,7 @@ int main()
     input.close();
     names_of_files.insert(first_link.substr(10));
     for (int i = 0; i < x; i++)
-    {
         threads.emplace_back(working_with_files, std::ref(links), std::ref(names_of_files));
-    }
     for (int i = 0; i < x; i++)
         threads[i].join();
     auto end = std::chrono::steady_clock::now();
