@@ -7,6 +7,8 @@
 #include <cctype>
 #include <vector>
 
+class Env;
+
 class Expression
 {
 public:
