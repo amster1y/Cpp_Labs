@@ -1,440 +1,478 @@
 #include <iostream>
 #include <fstream>
 #include <string>
-using namespace std;
+#include <unordered_map>
+#include <utility>
+#include <list>
+#include <cctype>
+#include <vector>
+
+class Env;
 
 class Expression
-{;
+{
 public:
-    friend Expression* read(string str);
-    friend Expression* simplify(Expression* ex);
-    virtual Expression* copy() = 0;
-    virtual ostream & print(ostream &type) const = 0;
-    virtual Expression* derivative(string v) const = 0;
-    virtual int eval(string str) const = 0;
-    virtual bool operator==(Expression* other) const = 0;
+    virtual Expression* eval(Env* data) = 0;
     virtual ~Expression()
     {}
 };
 
-class Number: public Expression
+class Env
 {
-protected:
-    int num;
+    std::unordered_map<std::string, Expression*> env;
+    friend class Var;
+    friend class Let;
+    friend class Call;
+    friend class Set;
 public:
-    friend Expression* simplify(Expression* ex);
-    Number(int num): num(num) 
+    Env(std::unordered_map<std::string, Expression*> env): env(env)
     {}
 
-    Expression* copy()
+    Env& operator=(const Env& other)
     {
-        return new Number(num);
+        if (this != &other)
+        {
+            env = other.env;
+        }
+        return *this;
     }
 
-    ostream & print(ostream &type) const
+    Expression* fromEnv(std::string& str)
     {
-        type << num;
-        return type;
+        try 
+        {
+            return env[str];
+        }
+        catch (...)
+        {
+            throw std::runtime_error("В env нет <expression>, соответствующего этому <id>");
+        }
+    }
+};
+
+class Val: public Expression
+{
+    int val;
+    friend int getValue(Expression* expr);
+public:
+    Val(int val): val(val)
+    {}
+
+    Expression* eval(Env* data)
+    {
+        return this;
     }
 
-    Expression* derivative(string v) const
+    ~Val()
+    {}
+};
+
+int getValue(Expression* expr)
+{
+    Val* value = dynamic_cast<Val*>(expr);
+    if (value != nullptr)
+        return value->val;
+    else
     {
-        return new Number(0);
+        delete expr;
+        throw std::invalid_argument("Подаваемое на вход выражение не соответстует типу <val>");
+    }
+}
+
+class Var: public Expression
+{
+    std::string id;
+public:
+    Var(std::string& id): id(id)
+    {}
+
+    Expression* eval(Env* data)
+    {
+        data->env[id] = this;
+        return data->fromEnv(id);
     }
 
-    int eval(string str) const
+    ~Var()
+    {}
+};
+
+class Add: public Expression
+{
+    Expression* e1;
+    Expression* e2;
+public:
+    Add(Expression* left, Expression* right): e1(left), e2(right)
+    {}
+
+    Expression* eval(Env* data)
     {
-        return num;
+        Env data1 = *data;
+        return new Val(getValue(e1->eval(&data1)) + getValue(e2->eval(&data1)));
     }
 
-    bool operator==(Expression* other) const
+    ~Add()
     {
-        Number* n = dynamic_cast<Number*>(other);
-        if (n == nullptr)
-            return false;
+        delete e1;
+        delete e2;
+    }
+};
+
+class If: public Expression
+{
+    Expression* e1;
+    Expression* e2;
+    Expression* e_then;
+    Expression* e_else;
+public:
+    If(Expression* lc, Expression* rc, Expression* then, Expression* else_): e1(lc), e2(rc), e_then(then), e_else(else_)
+    {}
+
+    Expression* eval(Env* data)
+    {
+        Env data1 = *data;
+        if (getValue(e1->eval(&data1)) > getValue(e2->eval(&data1)))
+            return e_then->eval(&data1);
         else
-            return (n->num == num);
+            return e_else->eval(&data1);
+        
     }
 
-    ~Number()
-    {}
+    ~If()
+    {
+        delete e1;
+        delete e2;
+        delete e_then;
+        delete e_else;
+    }
 };
 
-class Variable: public Expression
+class Let: public Expression
 {
-protected:
-    string var;
+    std::string id;
+    Expression* e_value;
+    Expression* e_body;
 public:
-    friend Expression* simplify(Expression* ex);
-    Variable(string var): var(var)
+    Let(std::string& id, Expression* e_value, Expression* e_body): id(id), e_value(e_value), e_body(e_body)
     {}
 
-    Expression* copy()
+    Expression* eval(Env* data)
     {
-        return new Variable(var);
+        data->env[id] = e_value->eval(data);
+        Env data1 = *data;
+        return e_body->eval(&data1);
     }
 
-    ostream & print(ostream &type) const
+    ~Let()
     {
-        type << var;
-        return type;
+        delete e_value;
+        delete e_body;
+    }
+};
+
+class Function: public Expression
+{
+    std::string id;
+    Expression* expr;
+    friend class Call;
+public:
+    Function(std::string& id, Expression* expr): id(id), expr(expr)
+    {}
+
+    Expression* eval(Env* data)
+    {
+        return this;
     }
 
-    Expression* derivative(string v) const
+    ~Function()
     {
-        if (v==var)
-            return new Number(1);
+        delete expr;
+    }
+};
+
+class Call: public Expression
+{
+    Expression* f_expr;
+    Expression* arg_expr;
+public:
+    Call(Expression* f_expr, Expression* arg_expr): f_expr(f_expr), arg_expr(arg_expr)
+    {}
+
+    Expression* eval(Env* data)
+    {
+        Env data1 = *data;
+        Expression* f_evaled = f_expr->eval(&data1);
+        Function* func = dynamic_cast<Function*>(f_evaled);
+        if (func == nullptr)
+            throw std::invalid_argument("eval(f_expr) не является <function>");
+        Var* var_expr = dynamic_cast<Var*>(f_evaled);
+        if (var_expr != nullptr)
+        {
+            data->env[func->id] = func->expr;
+            throw std::invalid_argument("Неверный тип данных");
+        }
+        data->env[func->id] = arg_expr->eval(&data1);
+        return func->expr->eval(&data1);
+    }
+
+    ~Call()
+    {
+        delete f_expr;
+        delete arg_expr;
+    }
+};
+
+class Set: public Expression
+{
+    std::string id;
+    Expression* e_val;
+public:
+    Set(std::string id, Expression* e_val): id(id), e_val(e_val)
+    {}
+
+    Expression* eval(Env* data)
+    {
+        data->env[id] = e_val;
+        return this;
+    }
+
+    ~Set()
+    {
+        delete e_val;
+    }
+};
+
+class Block: public Expression
+{
+    std::vector<Expression*> expr_list;
+public:
+    Block(std::vector<Expression*>& expr_list): expr_list(expr_list)
+    {}
+
+    Expression* eval(Env* data)
+    {
+        Env data1 = *data;
+        for (size_t i = 0; i < expr_list.size(); i++)
+            expr_list[i] = expr_list[i]->eval(&data1);
+        return expr_list[expr_list.size() - 1];
+    }
+};
+
+class Arr: public Expression
+{
+    std::list<Expression*> expr_list;
+    friend class At;
+public:
+    Arr(std::list<Expression*>& expr_list): expr_list(expr_list)
+    {}
+
+    Expression* eval(Env *data)
+    {
+        Env data1 = *data;
+        for (auto i = expr_list.begin(); i != expr_list.end(); i++)
+        {
+            *i = (*i)->eval(&data1);
+        }
+        return this;
+    }
+};
+
+class Gen: public Expression
+{
+    Expression* e_length;
+    Expression* e_function;
+public:
+    Gen(Expression* e_length, Expression* e_function): e_length(e_length), e_function(e_function)
+    {}
+
+    Expression* eval(Env* data)
+    {
+        int size = getValue(e_length->eval(data));
+        std::list<Expression*> result;
+        for (int i = 0; i < size; i++)
+            result.push_back((new Call(e_function, new Val(i+1)))->eval(data));
+        return new Arr(result);
+    }
+
+    ~Gen()
+    {
+        delete e_length;
+        delete e_function;
+    }
+};
+
+class At: public Expression
+{
+    Expression* e_array;
+    Expression* e_index;
+public:
+    At(Expression* e_array, Expression* e_index): e_array(e_array), e_index(e_index)
+    {}
+
+    Expression* eval(Env* data)
+    {
+        int index = getValue(e_index->eval(data));
+        Arr* array = dynamic_cast<Arr*>(e_array);
+        if (array == nullptr)
+            throw std::invalid_argument("e_array не является массивом");
+        auto pos = array->expr_list.begin();
+        int int_pos = 0;
+        while (pos != array->expr_list.end())
+        {
+            if (int_pos == index)
+                return *pos;
+            pos++;
+            int_pos++;
+        }
+        throw std::runtime_error("Выход за границы массива");
+    }
+
+    ~At()
+    {
+        delete e_array;
+        delete e_index;
+    }
+};
+
+std::string read(std::istream& in)
+{
+    std::string str;
+    for (std::string line; std::getline(in, line); )
+    {
+        if (line != "\n")
+            str += line;
+        in.clear();
+    }
+    return str;
+}
+
+std::list<std::string> make_list(std::string& str)
+{
+    std::string elem;
+    std::list<std::string> result;
+    for (char sym: str)
+    {
+        if ((sym >= '0' && sym <= '9') || (sym >= 'A' && sym <= 'z') || sym == '-')
+            elem += sym;
         else
-            return new Number(0);    
-    }
-
-    int eval(string str) const
-    {
-        if (str.find(var) == string::npos)
-            throw "Нет означивания одной из переменнных в выражении";
-        str = str.substr(str.find(var), str.length());
-        if (str.find(";") != string::npos)
-            str.substr(0, str.find(";"));
-        int pos = str.find("<-");
-        int answer = atoi(str.substr(pos+3, str.length()).c_str());
-        return answer;
-    }
-
-    bool operator==(Expression* other) const
-    {
-        Variable* v = dynamic_cast<Variable*>(other);
-        if (v == nullptr)
-            return false;
-        else
-            return (v->var == var);
-    }
-
-    ~Variable()
-    {}
-};
-
-class Expression_of_2: public Expression
-{
-protected:
-    Expression* left;
-    Expression* right;
-    Expression_of_2(Expression* left, Expression* right): left(left), right(right)
-    {}
-public:
-    ~Expression_of_2()
-    {
-        delete left;
-        delete right;
-    }
-
-    bool operator==(Expression* other) const
-    {
-        if (typeid(other) != typeid(this))
-            return false;
-        Expression_of_2* m = dynamic_cast<Expression_of_2*>(other);
-        return (*(m->left) == left && *(m->right) == right);
-    }
-};
-
-class Add: public Expression_of_2
-{
-    friend Expression* read(string str);
-    Add(Expression* left, Expression* right): Expression_of_2(left, right)
-    {}
-protected:
-    friend class Number;
-    friend class Variable;
-    friend class Sub;
-    friend class Mul;
-    friend class Div;
-public:
-    Expression* copy()
-    {
-        return new Add(left->copy(), right->copy());
-    }
-    friend Expression* simplify(Expression* ex);
-    ostream & print(ostream &type) const;
-    int eval(string str) const;
-    Expression* derivative(string v) const;
-};
-
-class Sub: public Expression_of_2
-{
-    friend Expression* read(string str);
-    Sub(Expression* left, Expression* right): Expression_of_2(left, right)
-    {}
-protected:
-    friend class Number;
-    friend class Variable;
-    friend class Add;
-    friend class Mul;
-    friend class Div;
-public:
-Expression* copy()
-    {
-        return new Sub(left->copy(), right->copy());
-    }
-    friend Expression* simplify(Expression* ex);
-    ostream & print(ostream &type) const;
-    int eval(string str) const;
-    Expression* derivative(string v) const;
-};
-
-class Mul: public Expression_of_2
-{
-    friend Expression* read(string str);
-    Mul(Expression* left, Expression* right): Expression_of_2(left, right)
-    {}
-protected:
-    friend class Number;
-    friend class Variable;
-    friend class Add;
-    friend class Sub;
-    friend class Div;
-public:
-    Expression* copy()
-    {
-        return new Mul(left->copy(), right->copy());
-    }
-    friend Expression* simplify(Expression* ex);
-    ostream & print(ostream &type) const;
-    int eval(string str) const;
-    Expression* derivative(string v) const;
-};
-
-class Div: public Expression_of_2
-{
-    friend Expression* read(string str);
-    Div(Expression* left, Expression* right): Expression_of_2(left, right)
-    {}
-protected:
-    friend class Number;
-    friend class Variable;
-    friend class Add;
-    friend class Sub;
-    friend class Mul;
-public:
-    Expression* copy()
-    {
-        return new Div(left->copy(), right->copy());
-    }
-    friend Expression* simplify(Expression* ex);
-    ostream & print(ostream &type) const;
-    int eval(string str) const;
-    Expression* derivative(string v) const;
-};
-
-ostream & Add::print(ostream &type) const
-{
-    type << "(";
-    left->print(type);
-    type << "+";
-    right->print(type);
-    type << ")";
-    return type;
-}
-
-int Add::eval(string str) const
-{
-    return left->eval(str) + right->eval(str);
-}
-
-Expression* Add::derivative(string v) const
-{
-    return new Add(left->copy()->derivative(v), right->copy()->derivative(v));
-}
-
-ostream & Sub::print(ostream &type) const
-{
-    type << "(";
-    left->print(type);
-    type << "-";
-    right->print(type);
-    type << ")";
-    return type;
-}
-
-int Sub::eval(string str) const
-{
-    return left->eval(str) - right->eval(str);
-}
-
-Expression* Sub::derivative(string v) const
-{
-    return new Sub(left->copy()->derivative(v), right->copy()->derivative(v));
-}
-
-ostream & Mul::print(ostream &type) const
-{
-    type << "(";
-    left->print(type);
-    type << "*";
-    right->print(type);
-    type << ")";
-    return type;
-}
-
-int Mul::eval(string str) const
-{
-    return left->eval(str) * right->eval(str);
-}
-
-Expression* Mul::derivative(string v) const
-{
-    return new Add(new Mul(left->copy()->derivative(v), right->copy()), new Mul(left->copy(), right->copy()->derivative(v)));
-}
-
-ostream & Div::print(ostream &type) const
-{
-    type << "(";
-    left->print(type);
-    type << "/";
-    right->print(type);
-    type << ")";
-    return type;
-}
-
-int Div::eval(string str) const
-{
-    return left->eval(str) / right->eval(str);
-}
-
-Expression* Div::derivative(string v) const
-{
-    return new Div(new Sub(new Mul(left->copy()->derivative(v), right->copy()), new Mul(left->copy(), right->copy()->derivative(v))), 
-    new Mul(right, right));
-}
-
-Expression* read(string str)
-{
-    int brackets = 0;
-    int pos = 0;
-    if (str.find('(') == string::npos)
-    {
-        if (str[0] >= '0' && str[0] <= '9')
-            return new Number(atoi(str.c_str()));
-        else
-            if (str.find('+') == string::npos && str.find('-') == string::npos && str.find('*') == string::npos && str.find('/') == string::npos)
-                return new Variable(str);
-            else
+        {
+            if (elem.length())
+                result.push_back(elem);
+            elem.clear();
+            if (sym != ' ')
             {
-                int pos = str.length() - 1;
-                while (pos != 0)
-                {
-                    if (str[pos] == '+')
-                        return new Add(read(str.substr(0, pos-1)), read(str.substr(pos+1, str.length())));
-                    if (str[pos] == '-')
-                        return new Sub(read(str.substr(0, pos-1)), read(str.substr(pos+1, str.length())));
-                    pos--;
-                }
-                pos = str.length() - 1;
-                while (pos != 0)
-                {
-                    if (str[pos] == '*')
-                        return new Mul(read(str.substr(0, pos-1)), read(str.substr(pos+1, str.length())));
-                    if (str[pos] == '/')
-                        return new Div(read(str.substr(0, pos-1)), read(str.substr(pos+1, str.length())));
-                    pos--;
-                }
+                elem += sym;
+                result.push_back(elem);
+                elem.clear();
             }
-    }
-    str = str.substr(1, str.length() - 2);
-    while (pos <= str.length())
-    {
-        if (str[pos] == '(')
-            brackets++;
-        if (str[pos] == ')')
-            brackets--;
-        if (brackets == 0)
-        {
-            string l = str.substr(0, pos);
-            string r = str.substr(pos+1, str.length() - pos - 1);
-            if (str[pos] == '+')
-                return new Add(read(l), read(r));
-            if (str[pos] == '-')
-                return new Sub(read(l), read(r));
-            if (str[pos] == '*')
-                return new Mul(read(l), read(r));
-            if (str[pos] == '/')
-                return new Div(read(l), read(r));
         }
-        pos++;
     }
+    if (elem.length())
+        result.push_back(elem);
+    return result;
 }
 
-Expression* simplify(Expression* ex)
+Expression* get_expr(std::list<std::string>::iterator& pos)
 {
-    Number* num = dynamic_cast<Number*>(ex);
-    Variable* var = dynamic_cast<Variable*>(ex);
-    if (num != nullptr || var != nullptr)
-        return ex;
-    Add* add_exp = dynamic_cast<Add*>(ex);
-    if (add_exp != nullptr)
+    Expression* result;
+    pos++;
+    if (*pos == "val")
     {
-        add_exp->left = simplify(add_exp->left);
-        add_exp->right = simplify(add_exp->right);
-        Number* l = dynamic_cast<Number*>(add_exp->left);
-        Number* r = dynamic_cast<Number*>(add_exp->right);
-        if (l != nullptr && r != nullptr)
-            return new Number(ex->eval(""));
+        pos++;
+        result = new Val(stoi(*pos));
+        pos++;
+        pos++;
+        return result;
     }
-    Sub* sub_exp = dynamic_cast<Sub*>(ex);
-    if (sub_exp != nullptr)
+    if (*pos == "var")
     {
-        sub_exp->left = simplify(sub_exp->left);
-        sub_exp->right = simplify(sub_exp->right);
-        Number* l = dynamic_cast<Number*>(sub_exp->left);
-        Number* r = dynamic_cast<Number*>(sub_exp->right);
-        if (l != nullptr && r != nullptr)
-            return new Number(ex->eval(""));
-        if (sub_exp->left == sub_exp->right)
-            return new Number(0);
+        pos++;
+        result = new Var(*pos);
+        pos++;
+        pos++;
+        return result;
     }
-    Mul* mul_exp = dynamic_cast<Mul*>(ex);
-    if (mul_exp != nullptr)
+    if (*pos == "add")
     {
-        mul_exp->left = simplify(mul_exp->left);
-        mul_exp->right = simplify(mul_exp->right);
-        Number* l = dynamic_cast<Number*>(mul_exp->left);
-        Number* r = dynamic_cast<Number*>(mul_exp->right);
-        if (l != nullptr)
-        {
-            if (l->num == 0)
-                return new Number(0);
-            if (l->num == 1)
-                return mul_exp->right;
-        }
-        if (r != nullptr)
-        {
-            if (r->num == 0)
-                return new Number(0);
-            if (r->num == 1)
-                return mul_exp->right;
-        }
-        if (l != nullptr && r != nullptr)
-            return new Number(ex->eval(""));
+        pos++;
+        Expression* left = get_expr(pos);
+        Expression* right = get_expr(pos);
+        result = new Add(left, right);
+        pos++;
+        return result;
     }
-    Div* div_exp = dynamic_cast<Div*>(ex);
-    if (div_exp != nullptr)
+    if (*pos == "if")
     {
-        div_exp->left = simplify(div_exp->left);
-        div_exp->right = simplify(div_exp->right);
-        Number* l = dynamic_cast<Number*>(div_exp->left);
-        Number* r = dynamic_cast<Number*>(div_exp->right);
-        if (l != nullptr && r != nullptr)
-            return new Number(ex->eval(""));
+        pos++;
+        Expression* e1 = get_expr(pos);
+        Expression* e2 = get_expr(pos);
+        pos++;
+        Expression* e_then = get_expr(pos);
+        pos++;
+        Expression* e_else = get_expr(pos);
+        result = new If(e1, e2, e_then, e_else);
+        pos++;
+        return result;
     }
-    return ex;    
+    if (*pos == "let")
+    {
+        pos++;
+        std::string id = *pos;
+        pos++;
+        pos++;
+        Expression* e_value = get_expr(pos);
+        pos++;
+        Expression* e_body = get_expr(pos);
+        result = new Let(id, e_value, e_body);
+        pos++;
+        return result;
+    }
+    if (*pos == "function")
+    {
+        pos++;
+        std::string id = *pos;
+        pos++;
+        Expression* expr = get_expr(pos);
+        result = new Function(id, expr);
+        pos++;
+        return result;
+    }
+    if (*pos == "call")
+    {
+        pos++;
+        Expression* f_expr = get_expr(pos);
+        Expression* arg_expr = get_expr(pos);
+        result = new Call(f_expr, arg_expr);
+        pos++;
+        return result;
+    }
 }
 
 int main()
 {
-    string str;
-    std::cin >> str;
-    Expression* e = read(str);
-    Expression* de = e->derivative("x");
-    de->print(cout);
-    delete e;
-    delete de;
+    std::ifstream input;
+    std::ofstream output;
+    std::string str;
+    std::list<std::string> str_list;
+    std::unordered_map<std::string, Expression*> data_map;
+    Env data(data_map);
+    try
+    {
+        input.open("input.txt");
+        output.open("output.txt");
+        str = read(input);
+        input.close();
+        str_list = make_list(str);
+        std::list<std::string>::iterator pos = str_list.begin();
+        Expression* expr = get_expr(pos);
+        Expression* evaled_expr = expr->eval(&data);
+        output << "(val " << getValue(evaled_expr) << ")";
+        output.close();
+        delete expr;
+        delete evaled_expr;
+    }
+    catch (std::exception &exception)
+    {
+        std::cout << "ERROR";
+    }
     return 0;
 }
