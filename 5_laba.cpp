@@ -11,7 +11,7 @@
 
 std::mutex locker;
 std::mutex fin_locker;
-std::atomic<bool> flag_of_working(false);
+std::atomic<int> count_of_working(0);
 std::atomic<int> links_count(0);
 
 void working_with_files(std::queue<std::string>& links, std::set<std::string>& names_of_files)
@@ -26,7 +26,7 @@ void working_with_files(std::queue<std::string>& links, std::set<std::string>& n
     {
         while (links.empty())
         {
-            if (!flag_of_working)
+            if (count_of_working == 0)
                 return;
         }
         std::unique_lock<std::mutex> lock1(locker);
@@ -34,7 +34,7 @@ void working_with_files(std::queue<std::string>& links, std::set<std::string>& n
         {
             break;
         }
-        flag_of_working = true;
+        count_of_working++;
         str = links.front();
         links.pop();
         lock1.unlock();
@@ -44,7 +44,7 @@ void working_with_files(std::queue<std::string>& links, std::set<std::string>& n
             str = matched_links.suffix().str();
             bool search = std::regex_search(str1, matched_links2, mask2);
             str1 = matched_links2.str();
-            std::lock_guard<std::mutex> lock2(fin_locker);
+            std::unique_lock<std::mutex> lock2(fin_locker);
             if (names_of_files.find(str1) == names_of_files.end())
             {
                 input.open("test_data/" + str1);
@@ -58,7 +58,7 @@ void working_with_files(std::queue<std::string>& links, std::set<std::string>& n
                 names_of_files.insert(str1);
             }
         }
-        flag_of_working = false;
+        count_of_working--;
     }
 } 
 
@@ -89,7 +89,6 @@ int main()
     names_of_files.insert(first_link.substr(10));
     for (int i = 0; i < x; i++)
     {
-        flag_of_working = true;
         threads.emplace_back(working_with_files, std::ref(links), std::ref(names_of_files));
     }
     for (int i = 0; i < x; i++)
@@ -99,4 +98,4 @@ int main()
     return 0;
 }
 
-//Самое эффективное время выполнения программы при 7 работающих потоках ~9,239 сек
+//Самое эффективное время выполнения программы при 8 работающих потоках ~7,669 сек
