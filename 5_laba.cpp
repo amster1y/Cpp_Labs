@@ -17,7 +17,7 @@ std::atomic<int> links_count(0);
 void working_with_files(std::queue<std::string>& links, std::set<std::string>& names_of_files)
 {
     std::ifstream input;
-    std::string str, str1, new_link;
+    std::string str, str1, str_from_file;
     std::regex mask("<a href=\"file://.*?>");
     std::regex mask2("[0-9]*.html");
     std::smatch matched_links, matched_links2;
@@ -31,31 +31,33 @@ void working_with_files(std::queue<std::string>& links, std::set<std::string>& n
         }
         std::unique_lock<std::mutex> lock1(locker);
         if (links.empty())
+        {
             break;
+        }
         count_of_working++;
         str = links.front();
         links.pop();
         lock1.unlock();
-        while (std::regex_search(str, matched_links, mask))
+        input.open("test_data/" + str);
+        links_count++;
+        while(input)
         {
-            str1 = matched_links[0];
-            str = matched_links.suffix().str();
-            bool search = std::regex_search(str1, matched_links2, mask2);
-            str1 = matched_links2.str();
-            std::unique_lock<std::mutex> lock2(fin_locker);
-            if (names_of_files.find(str1) == names_of_files.end())
+            std::getline(input, str_from_file);
+            while (std::regex_search(str_from_file, matched_links, mask))
             {
-                input.open("test_data/" + str1);
-                links_count++;
-                while(input)
+                str1 = matched_links[0];
+                str_from_file = matched_links.suffix().str();
+                bool search = std::regex_search(str1, matched_links2, mask2);
+                str1 = matched_links2.str();
+                std::unique_lock<std::mutex> lock2(fin_locker);
+                if (names_of_files.find(str1) == names_of_files.end())
                 {
-                    std::getline(input, new_link);
-                    links.push(new_link);
+                    links.push(str1);
+                    names_of_files.insert(str1);
                 }
-                input.close();
-                names_of_files.insert(str1);
             }
         }
+        input.close();
         count_of_working--;
     }
 } 
@@ -76,17 +78,12 @@ int main()
     input.close();
 
     first_link = first_link.substr(7);
-    input.open(first_link);
-    links_count++;
-    while(input)
-    {
-        std::getline(input, str);
-        links.push(str);
-    }
-    input.close();
+    links.push(first_link.substr(10));
     names_of_files.insert(first_link.substr(10));
     for (int i = 0; i < x; i++)
+    {
         threads.emplace_back(working_with_files, std::ref(links), std::ref(names_of_files));
+    }
     for (int i = 0; i < x; i++)
         threads[i].join();
     auto end = std::chrono::steady_clock::now();
@@ -94,4 +91,4 @@ int main()
     return 0;
 }
 
-//Самое эффективное время выполнения программы при 8 работающих потоках ~7,669 сек
+//Самое эффективное время выполнения программы при 13 работающих потоках ~3,012 сек
